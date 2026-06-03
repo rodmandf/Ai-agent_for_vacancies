@@ -1,0 +1,1 @@
+"""Vacancy ranking Telegram bot."""
