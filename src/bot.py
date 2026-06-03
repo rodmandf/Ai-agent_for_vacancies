@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
+import logging
 from pathlib import Path
 
 from .config import ensure_dirs, get_settings
@@ -12,6 +12,8 @@ from .report import build_report, top_summary
 from .scoring import score_vacancies, validate_vacancies
 from .storage import RunLogger, load_user, reset_user, save_user
 
+
+logger = logging.getLogger(__name__)
 
 HELP_TEXT = (
     "Привет! Я помогу подобрать junior-вакансии под резюме.\n\n"
@@ -36,9 +38,11 @@ def run_workflow(resume: str, criteria: str, chat_id: str = "dry-run") -> tuple[
     if not resume.strip():
         logger.log("Резюме пустое, использую sample_resume.md.")
         resume = (settings.data_dir / "sample_resume.md").read_text(encoding="utf-8")
-    if not criteria.strip():
-        logger.log("Критерии пустые, использую criteria.md.")
+    if not criteria.strip() and chat_id == "dry-run":
+        logger.log("Критерии пустые в dry-run, использую criteria.md.")
         criteria = (settings.data_dir.parent / "criteria.md").read_text(encoding="utf-8")
+    elif not criteria.strip():
+        logger.log("Критерии пустые, извлекаю профиль только из резюме пользователя.")
 
     agent = GroqAgent(settings.groq_api_key, settings.groq_model, logger)
     profile = agent.extract_profile(resume, criteria)
@@ -59,6 +63,7 @@ def run_workflow(resume: str, criteria: str, chat_id: str = "dry-run") -> tuple[
 
 
 async def run_bot() -> None:
+    logging.basicConfig(level=logging.INFO)
     settings = get_settings()
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан. Заполните .env или используйте --dry-run.")
@@ -66,16 +71,17 @@ async def run_bot() -> None:
     try:
         from aiogram import Bot, Dispatcher, F
         from aiogram.client.session.aiohttp import AiohttpSession
+        from aiogram.exceptions import TelegramNetworkError
         from aiogram.filters import Command
-        from aiogram.types import BufferedInputFile, Message
+        from aiogram.types import FSInputFile, Message
     except ImportError as error:
         raise RuntimeError("Не установлен aiogram. Выполните: pip install -r requirements.txt") from error
 
-    session = AiohttpSession(proxy=settings.telegram_proxy_url or None)
-    if settings.telegram_proxy_url:
-        print("Telegram proxy включен через TELEGRAM_PROXY_URL.", flush=True)
+    session = AiohttpSession(proxy=settings.telegram_proxy_url) if settings.telegram_proxy_url else None
     bot = Bot(token=settings.telegram_bot_token, session=session)
     dp = Dispatcher()
+    if settings.telegram_proxy_url:
+        logger.info("Telegram proxy включен через TELEGRAM_PROXY_URL.")
 
     async def read_document_text(message: Message) -> str:
         if not message.document:
@@ -138,10 +144,9 @@ async def run_bot() -> None:
             data["last_report"] = str(report_path)
             data.setdefault("trace", []).append("Сгенерирован новый отчет.")
             save_user(message.chat.id, data)
-            content = report_path.read_bytes()
             await message.answer(summary)
             await message.answer_document(
-                BufferedInputFile(content, filename="report.md"),
+                FSInputFile(report_path, filename="report.md"),
                 caption="Готово: отчет в Markdown.",
             )
         except Exception as error:
@@ -154,10 +159,7 @@ async def run_bot() -> None:
         if not path.exists():
             await message.answer("Последний отчет не найден. Запустите /find.")
             return
-        await message.answer_document(
-            BufferedInputFile(path.read_bytes(), filename="report.md"),
-            caption="Последний отчет.",
-        )
+        await message.answer_document(FSInputFile(path, filename="report.md"), caption="Последний отчет.")
 
     @dp.message(Command("reset"))
     async def reset_command(message: Message) -> None:
@@ -184,17 +186,14 @@ async def run_bot() -> None:
             return
         await message.answer("Я не понял сообщение. Используйте /start для списка команд.")
 
-    while True:
-        try:
-            print("Telegram-бот запущен, polling активен.", flush=True)
-            await dp.start_polling(bot)
-            return
-        except Exception as error:
-            message = str(error)
-            if "Unauthorized" in message or "Token" in message:
-                raise
-            print(f"Telegram API недоступен, повтор через 15 секунд: {error}", file=sys.stderr, flush=True)
-            await asyncio.sleep(15)
+    try:
+        logger.info("Telegram-бот запущен, polling активен.")
+        await dp.start_polling(bot)
+    except TelegramNetworkError as error:
+        raise RuntimeError(
+            "Бот не смог подключиться к api.telegram.org. "
+            "Проверьте VPN/proxy и TELEGRAM_PROXY_URL в .env."
+        ) from error
 
 
 def command_payload(text: str) -> str:

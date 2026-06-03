@@ -64,19 +64,32 @@ def build_query(profile: CandidateProfile) -> str:
 
 
 def build_search_queries(profile: CandidateProfile) -> list[str]:
-    queries = [
-        "Python разработчик",
-        "Backend разработчик",
-        "Junior Python",
-        "стажер Python",
-        "разработчик API",
-        "Python backend",
-        "Backend developer",
-        "FastAPI",
-        "SQL Python",
-    ]
-    queries.extend(profile.target_roles[:6])
-    queries.extend(profile.must_have_skills[:4])
+    profile_text = " ".join(profile.target_roles + profile.must_have_skills + profile.nice_to_have_skills).lower()
+    queries = profile.target_roles[:6] + profile.must_have_skills[:5]
+
+    if any(term in profile_text for term in ["frontend", "react", "javascript", "typescript"]):
+        queries.extend(["Frontend разработчик", "Junior Frontend", "React разработчик", "JavaScript", "TypeScript"])
+    elif any(term in profile_text for term in ["data analyst", "аналитик", "bi", "tableau", "power bi"]):
+        queries.extend(["аналитик данных", "стажер аналитик", "SQL аналитик", "Data Analyst"])
+    elif any(term in profile_text for term in ["data scientist", "machine learning", "ml", "pandas"]):
+        queries.extend(["Data Scientist", "стажер Data Scientist", "Python ML", "Machine Learning"])
+    elif "python" in profile_text or "backend" in profile_text:
+        queries.extend(
+            [
+                "Python разработчик",
+                "Backend разработчик",
+                "Junior Python",
+                "стажер Python",
+                "разработчик API",
+                "Python backend",
+                "Backend developer",
+                "FastAPI",
+                "SQL Python",
+            ]
+        )
+    else:
+        queries.extend(["стажер", "junior", "начинающий специалист"])
+
     result = []
     seen = set()
     for query in queries:

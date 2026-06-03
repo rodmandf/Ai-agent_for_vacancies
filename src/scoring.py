@@ -30,17 +30,38 @@ def parse_criteria(text: str, resume: str = "") -> CandidateProfile:
 
     combined = f"{resume}\n{text}".lower()
     inferred_skills = []
-    for skill in ["Python", "FastAPI", "SQL", "PostgreSQL", "Docker", "Git", "REST API", "LLM", "Telegram Bot", "aiogram", "asyncio"]:
+    for skill in [
+        "Python",
+        "FastAPI",
+        "SQL",
+        "PostgreSQL",
+        "Docker",
+        "Git",
+        "REST API",
+        "LLM",
+        "Telegram Bot",
+        "aiogram",
+        "asyncio",
+        "JavaScript",
+        "TypeScript",
+        "React",
+        "Node.js",
+        "Java",
+        "Go",
+        "Golang",
+        "1C",
+        "1С",
+    ]:
         if skill.lower() in combined:
             inferred_skills.append(skill)
 
     return CandidateProfile(
-        target_roles=split_values(data.get("target_roles", "")) or ["Python Developer", "Backend Developer", "LLM Engineer"],
+        target_roles=split_values(data.get("target_roles", "")) or infer_roles(combined),
         must_have_skills=split_values(data.get("must_have_skills", "")) or inferred_skills[:5],
         nice_to_have_skills=split_values(data.get("nice_to_have_skills", "")) or inferred_skills[5:],
         preferred_locations=split_values(data.get("preferred_locations", "")) or ["remote", "Москва", "Санкт-Петербург"],
         remote_ok=parse_bool(data.get("remote_ok", "true")),
-        levels=split_values(data.get("level", "")) or ["intern", "junior", "junior+"],
+        levels=split_values(data.get("level", "")) or infer_levels(combined),
         max_age_days=int(data.get("max_age_days", "45") or 45),
         dealbreakers=split_values(data.get("dealbreakers", "")) or ["senior", "lead", "unpaid", "3+ years"],
         summary=resume[:700].strip(),
@@ -156,6 +177,24 @@ def matched_terms(blob: str, terms: list[str]) -> list[str]:
         if normalized and normalized in blob:
             result.append(term)
     return result
+
+
+def infer_roles(combined: str) -> list[str]:
+    if any(term in combined for term in ["frontend", "react", "верстк", "javascript", "typescript"]):
+        return ["Frontend разработчик", "Frontend developer", "React разработчик", "стажер Frontend"]
+    if any(term in combined for term in ["data analyst", "аналитик", "bi", "power bi", "tableau"]):
+        return ["Data Analyst", "аналитик данных", "стажер аналитик"]
+    if any(term in combined for term in ["data scientist", "machine learning", "ml", "pandas", "sklearn"]):
+        return ["Data Scientist", "ML Engineer", "стажер Data Scientist"]
+    if any(term in combined for term in ["backend", "api", "fastapi", "django", "python"]):
+        return ["Python разработчик", "Backend разработчик", "Backend developer", "разработчик API"]
+    return ["стажер", "junior", "начинающий специалист"]
+
+
+def infer_levels(combined: str) -> list[str]:
+    if any(term in combined for term in ["middle", "мидл"]):
+        return ["middle", "middle+"]
+    return ["стажер", "стажировка", "junior", "junior+", "начинающий специалист"]
 
 
 def python_is_core(profile: CandidateProfile) -> bool:
